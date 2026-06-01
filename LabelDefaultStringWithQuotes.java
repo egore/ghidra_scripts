@@ -48,21 +48,23 @@ public class LabelDefaultStringWithQuotes extends GhidraScript {
             return;
         }
 
+        String oldName = sym.getName();
+        String addrSuffix = "_" + addr;
+        boolean isDefaultAsciiStringLabel = oldName.startsWith("s_") && oldName.endsWith(addrSuffix);
+        boolean isDefaultUnicodeStringLabel = oldName.startsWith("u_") && oldName.endsWith(addrSuffix);
+
         // Ghidra does not allow blanks in labels, use underscores instead
         String cleaned = s.replace(" ", "_")
                 .replace("\\", "\\\\")
                 .replace("\n", "\\n")
                 .replace("\r", "\\r")
                 .replace("\t", "\\t");
-        String newName = "\"" + cleaned + "\"";
+        String newName = (isDefaultUnicodeStringLabel ? "u\"" : "\"") + cleaned + "\"";
         println(s);
         println(newName);
 
-        String oldName = sym.getName();
-
         if (!oldName.equals(newName)) {
-            String addrSuffix = "_" + addr;
-            if (!oldName.startsWith("s_") || !oldName.endsWith(addrSuffix)) {
+            if (!isDefaultAsciiStringLabel && !isDefaultUnicodeStringLabel) {
                 printerr("Primary symbol name does not look like a default string label: %s".formatted(oldName));
                 return;
             }
