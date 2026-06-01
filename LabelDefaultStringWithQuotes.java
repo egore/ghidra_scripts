@@ -84,11 +84,22 @@ public class LabelDefaultStringWithQuotes extends GhidraScript {
             println("Label already matches desired name: %s".formatted(newName));
         }
 
-        // Jump no address after the string, which likely is the next string
+        // Jump to address after the string, skipping up to 7 null-byte padding
         Address next = d.getMaxAddress().next();
         if (next != null) {
-            goTo(next);
-            currentAddress = next;
+            int skipped = 0;
+            while (skipped < 7 && next != null) {
+                byte b = currentProgram.getMemory().getByte(next);
+                if (b != 0) {
+                    break;
+                }
+                next = next.next();
+                skipped++;
+            }
+            if (next != null) {
+                goTo(next);
+                currentAddress = next;
+            }
         }
 
     }
