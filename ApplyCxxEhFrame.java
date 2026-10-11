@@ -10,6 +10,7 @@ import java.util.List;
 import ghidra.app.script.GhidraScript;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.data.*;
+import ghidra.program.model.lang.Language;
 import ghidra.program.model.listing.*;
 import ghidra.program.model.scalar.Scalar;
 import ghidra.program.model.symbol.SourceType;
@@ -22,6 +23,13 @@ public class ApplyCxxEhFrame extends GhidraScript {
 
 	@Override
 	protected void run() throws Exception {
+		Language lang = currentProgram.getLanguage();
+		if (!lang.getProcessor().toString().equals("x86") || lang.getLanguageDescription().getSize() != 32) {
+			popup("ApplyCxxEhFrame only supports x86 32-bit programs, but this one is " +
+				lang.getLanguageID() + ".");
+			return;
+		}
+
 		List<Function> targets = new ArrayList<>();
 		if (currentSelection != null && !currentSelection.isEmpty()) {
 			for (Function f : currentProgram.getFunctionManager().getFunctions(currentSelection, true)) {
