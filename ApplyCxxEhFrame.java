@@ -74,10 +74,13 @@ public class ApplyCxxEhFrame extends GhidraScript {
 				continue;
 			}
 			Scalar s = in.getScalar(0);
-			Instruction next = in.getNext();
-			if (s.getSignedValue() == -1 && next != null && isPushImm(next) && readsFsZero(next)) {
+			if (s.getSignedValue() != -1) {
+				continue;
+			}
+			Instruction handlerPush = findHandlerPush(in);
+			if (handlerPush != null) {
 				pushState = in;
-				pushHandler = next;
+				pushHandler = handlerPush;
 				break;
 			}
 		}
@@ -98,7 +101,8 @@ public class ApplyCxxEhFrame extends GhidraScript {
 		StackFrame sf = f.getStackFrame();
 		for (Variable v : sf.getStackVariables()) {
 			int off = v.getStackOffset();
-			if (off < start + FRAME_SIZE && off + v.getLength() > start) {
+			boolean overlaps = off < start + FRAME_SIZE && off + v.getLength() > start;
+			if (overlaps || v.getName().equals("ehFrame")) {
 				f.removeVariable(v);
 			}
 		}
@@ -124,6 +128,14 @@ public class ApplyCxxEhFrame extends GhidraScript {
 				}
 				depth -= (int) s.getSignedValue();
 			}
+			else if (mn.equals("AND") && in.getRegister(0) != null && in.getRegister(0).getName().equals("ESP")) {
+				// stack realignment: Ghidra's decompiler folds this into the offsets by masking the tracked depth
+				Scalar s = in.getScalar(1);
+				if (s == null) {
+					return Integer.MIN_VALUE;
+				}
+				depth &= (int) s.getSignedValue();
+			}
 			else if (mn.equals("PUSHAD") || mn.equals("PUSHFD") || mn.equals("POP") || mn.equals("ADD") && in.getRegister(0) != null && in.getRegister(0).getName().equals("ESP")) {
 				return Integer.MIN_VALUE;
 			}
@@ -137,15 +149,21 @@ public class ApplyCxxEhFrame extends GhidraScript {
 			in.getScalar(0) != null;
 	}
 
-	// The saved ExceptionList is pushed right after the handler, either directly from fs:[0] or via a register.
-	private boolean readsFsZero(Instruction handlerPush) {
-		Instruction in = handlerPush.getNext();
-		for (int i = 0; in != null && i < 3; i++, in = in.getNext()) {
+	// MSVC schedules the fs:[0] load either before or after the handler push, so accept both orders
+	// within a short window after push -1. Returns the handler push, or null if this isn't an EH prolog.
+	private Instruction findHandlerPush(Instruction pushState) {
+		Instruction handlerPush = null;
+		boolean readsFs = false;
+		Instruction in = pushState.getNext();
+		for (int i = 0; in != null && i < 5 && !in.getFlowType().isCall(); i++, in = in.getNext()) {
+			if (handlerPush == null && isPushImm(in)) {
+				handlerPush = in;
+			}
 			if (in.toString().toUpperCase().contains("FS:")) {
-				return true;
+				readsFs = true;
 			}
 		}
-		return false;
+		return readsFs ? handlerPush : null;
 	}
 
 	private void renameHandler(Function owner, Scalar handlerValue) throws Exception {
